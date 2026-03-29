@@ -544,6 +544,8 @@ INDICES_DOACOES = [
     WHERE LENGTH(regexp_replace(COALESCE(cpf_cnpj_doador, ''), '\\D', '', 'g')) = 11
       AND NULLIF(TRIM(COALESCE(NULLIF(nome_doador_rf, ''), NULLIF(nome_doador, ''))), '') IS NOT NULL""",
     "CREATE INDEX idx_tse_receitas_candidato_doc_doador_orig_norm ON tse_receitas_candidato ((regexp_replace(COALESCE(cpf_cnpj_doador_orig, ''), '\\D', '', 'g')))",
+    "CREATE INDEX idx_tse_receitas_candidato_cpf_administrador ON tse_receitas_candidato (cpf_administrador)",
+    "CREATE INDEX idx_tse_receitas_candidato_cpf_cnpj_doador ON tse_receitas_candidato (cpf_cnpj_doador)",
 ]
 
 INDICES_DESPESAS = [
@@ -562,6 +564,7 @@ INDICES_DESPESAS = [
         END)
     )
     INCLUDE (cpf_cnpj_fornecedor, nome_fornecedor, nome_fornecedor_rf)""",
+    "CREATE INDEX idx_tse_despesas_candidato_cpf_cnpj_fornecedor ON tse_despesas_candidato (cpf_cnpj_fornecedor)",
 ]
 
 # ── Configuracao por finalidade ──────────────────────────────────────────────

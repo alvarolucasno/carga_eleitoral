@@ -9,6 +9,7 @@ DB_CHOICES = {"mysql", "postgres"}
 DB_ALIASES = {
     "pg": "postgres",
     "postgresql": "postgres",
+    "pcse": "postgres",
 }
 
 
