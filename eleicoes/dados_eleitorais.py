@@ -3,7 +3,8 @@
 Copia TODOS os anos eleitorais do BigQuery (BasedosDados) para o PostgreSQL.
 
 Processa ano a ano, tabela a tabela (tse_candidatos, tse_receitas_candidato,
-tse_despesas_candidato), verificando contagem de linhas em cada etapa.
+tse_despesas_candidato, tse_receitas_comite, tse_receitas_orgao_partidario),
+verificando contagem de linhas em cada etapa.
 
 Uso:
     python dados_campanha_carga_completa.py
@@ -275,11 +276,159 @@ LEFT JOIN (
 WHERE dados.ano = {ano}
 """
 
+QUERY_RECEITAS_COMITE_TPL = """
+WITH
+dicionario_tipo_doador_orig AS (
+    SELECT
+        chave AS chave_tipo_doador_orig,
+        valor AS descricao_tipo_doador_orig
+    FROM `basedosdados.br_tse_eleicoes.dicionario`
+    WHERE
+        TRUE
+        AND nome_coluna = 'tipo_doador_orig'
+        AND id_tabela = 'receitas_comite'
+)
+SELECT
+    dados.ano as ano,
+    dados.sigla_uf AS sigla_uf,
+    diretorio_sigla_uf.nome AS sigla_uf_nome,
+    dados.id_municipio AS id_municipio,
+    diretorio_id_municipio.nome AS id_municipio_nome,
+    dados.id_municipio_tse AS id_municipio_tse,
+    diretorio_id_municipio_tse.nome AS id_municipio_tse_nome,
+    dados.tipo_eleicao as tipo_eleicao,
+    dados.tipo_comite as tipo_comite,
+    dados.sequencial_comite as sequencial_comite,
+    dados.numero_partido as numero_partido,
+    dados.sigla_partido as sigla_partido,
+    dados.data_receita as data_receita,
+    dados.origem_receita as origem_receita,
+    dados.fonte_receita as fonte_receita,
+    dados.natureza_receita as natureza_receita,
+    dados.situacao_receita as situacao_receita,
+    dados.descricao_receita as descricao_receita,
+    dados.tipo_documento as tipo_documento,
+    dados.numero_documento as numero_documento,
+    dados.nome_membro as nome_membro,
+    dados.cpf_membro as cpf_membro,
+    dados.cnpj_prestador_contas as cnpj_prestador_contas,
+    dados.sigla_uf_doador as sigla_uf_doador,
+    dados.nome_doador as nome_doador,
+    dados.nome_doador_rf as nome_doador_rf,
+    dados.cpf_cnpj_doador as cpf_cnpj_doador,
+    dados.numero_partido_doador as numero_partido_doador,
+    dados.numero_candidato_doador as numero_candidato_doador,
+    dados.cnae_2_doador as cnae_2_doador,
+    dados.cnae_2_doador_classe as cnae_2_doador_classe,
+    dados.cnae_2_doador_subclasse AS cnae_2_doador_subclasse,
+    diretorio_cnae_2_doador_subclasse.descricao_subclasse AS cnae_2_doador_subclasse_descricao_subclasse,
+    diretorio_cnae_2_doador_subclasse.descricao_classe AS cnae_2_doador_subclasse_descricao_classe,
+    diretorio_cnae_2_doador_subclasse.descricao_grupo AS cnae_2_doador_subclasse_descricao_grupo,
+    diretorio_cnae_2_doador_subclasse.descricao_divisao AS cnae_2_doador_subclasse_descricao_divisao,
+    diretorio_cnae_2_doador_subclasse.descricao_secao AS cnae_2_doador_subclasse_descricao_secao,
+    dados.descricao_cnae_2_doador as descricao_cnae_2_doador,
+    dados.cpf_cnpj_doador_orig as cpf_cnpj_doador_orig,
+    dados.nome_doador_orig as nome_doador_orig,
+    dados.nome_doador_orig_rf as nome_doador_orig_rf,
+    descricao_tipo_doador_orig AS tipo_doador_orig,
+    dados.descricao_cnae_2_doador_orig as descricao_cnae_2_doador_orig,
+    dados.valor_receita as valor_receita
+FROM `basedosdados.br_tse_eleicoes.receitas_comite` AS dados
+LEFT JOIN (SELECT DISTINCT sigla,nome FROM `basedosdados.br_bd_diretorios_brasil.uf`) AS diretorio_sigla_uf
+    ON dados.sigla_uf = diretorio_sigla_uf.sigla
+LEFT JOIN (SELECT DISTINCT id_municipio,nome FROM `basedosdados.br_bd_diretorios_brasil.municipio`) AS diretorio_id_municipio
+    ON dados.id_municipio = diretorio_id_municipio.id_municipio
+LEFT JOIN (SELECT DISTINCT id_municipio_tse,nome FROM `basedosdados.br_bd_diretorios_brasil.municipio`) AS diretorio_id_municipio_tse
+    ON dados.id_municipio_tse = diretorio_id_municipio_tse.id_municipio_tse
+LEFT JOIN (SELECT DISTINCT subclasse,descricao_subclasse,descricao_classe,descricao_grupo,descricao_divisao,descricao_secao FROM `basedosdados.br_bd_diretorios_brasil.cnae_2`) AS diretorio_cnae_2_doador_subclasse
+    ON dados.cnae_2_doador_subclasse = diretorio_cnae_2_doador_subclasse.subclasse
+LEFT JOIN `dicionario_tipo_doador_orig`
+    ON dados.tipo_doador_orig = chave_tipo_doador_orig
+WHERE dados.ano = {ano}
+"""
+
+QUERY_RECEITAS_ORGAO_TPL = """
+SELECT
+    dados.ano as ano,
+    dados.sigla_uf AS sigla_uf,
+    diretorio_sigla_uf.nome AS sigla_uf_nome,
+    dados.id_municipio AS id_municipio,
+    diretorio_id_municipio.nome AS id_municipio_nome,
+    dados.id_municipio_tse AS id_municipio_tse,
+    diretorio_id_municipio_tse.nome AS id_municipio_tse_nome,
+    dados.tipo_eleicao as tipo_eleicao,
+    dados.esfera_partidaria as esfera_partidaria,
+    dados.tipo_diretorio as tipo_diretorio,
+    dados.sequencial_diretorio as sequencial_diretorio,
+    dados.numero_partido as numero_partido,
+    dados.sigla_partido as sigla_partido,
+    dados.nome_partido as nome_partido,
+    dados.numero_recibo_eleitoral as numero_recibo_eleitoral,
+    dados.tipo_documento as tipo_documento,
+    dados.numero_documento as numero_documento,
+    dados.tipo_prestacao_contas as tipo_prestacao_contas,
+    dados.data_prestacao_contas as data_prestacao_contas,
+    dados.sequencial_prestador_contas as sequencial_prestador_contas,
+    dados.cnpj_prestador_contas as cnpj_prestador_contas,
+    dados.data_receita as data_receita,
+    dados.origem_receita as origem_receita,
+    dados.fonte_receita as fonte_receita,
+    dados.natureza_receita as natureza_receita,
+    dados.especie_receita as especie_receita,
+    dados.descricao_receita as descricao_receita,
+    dados.sequencial_receita as sequencial_receita,
+    dados.cnae_2_doador as cnae_2_doador,
+    dados.cnae_2_doador_classe as cnae_2_doador_classe,
+    dados.cnae_2_doador_subclasse AS cnae_2_doador_subclasse,
+    diretorio_cnae_2_doador_subclasse.descricao_subclasse AS cnae_2_doador_subclasse_descricao_subclasse,
+    diretorio_cnae_2_doador_subclasse.descricao_classe AS cnae_2_doador_subclasse_descricao_classe,
+    diretorio_cnae_2_doador_subclasse.descricao_grupo AS cnae_2_doador_subclasse_descricao_grupo,
+    diretorio_cnae_2_doador_subclasse.descricao_divisao AS cnae_2_doador_subclasse_descricao_divisao,
+    diretorio_cnae_2_doador_subclasse.descricao_secao AS cnae_2_doador_subclasse_descricao_secao,
+    dados.descricao_cnae_2_doador as descricao_cnae_2_doador,
+    dados.cpf_cnpj_doador as cpf_cnpj_doador,
+    dados.nome_doador as nome_doador,
+    dados.nome_doador_rf as nome_doador_rf,
+    dados.esfera_partidaria_doador as esfera_partidaria_doador,
+    dados.sigla_uf_doador as sigla_uf_doador,
+    dados.id_municipio_doador AS id_municipio_doador,
+    diretorio_id_municipio_doador.nome AS id_municipio_doador_nome,
+    dados.id_municipio_tse_doador as id_municipio_tse_doador,
+    dados.sequencial_candidato_doador as sequencial_candidato_doador,
+    dados.numero_candidato_doador as numero_candidato_doador,
+    dados.cargo_candidato_doador as cargo_candidato_doador,
+    dados.numero_partido_doador as numero_partido_doador,
+    dados.sigla_partido_doador as sigla_partido_doador,
+    dados.nome_partido_doador as nome_partido_doador,
+    dados.numero_recibo_doacao as numero_recibo_doacao,
+    dados.numero_documento_doacao as numero_documento_doacao,
+    dados.cpf_cnpj_doador_orig as cpf_cnpj_doador_orig,
+    dados.nome_doador_orig as nome_doador_orig,
+    dados.tipo_doador_orig as tipo_doador_orig,
+    dados.descricao_cnae_2_doador_orig as descricao_cnae_2_doador_orig,
+    dados.nome_doador_orig_rf as nome_doador_orig_rf,
+    dados.valor_receita as valor_receita
+FROM `basedosdados.br_tse_eleicoes.receitas_orgao_partidario` AS dados
+LEFT JOIN (SELECT DISTINCT sigla,nome FROM `basedosdados.br_bd_diretorios_brasil.uf`) AS diretorio_sigla_uf
+    ON dados.sigla_uf = diretorio_sigla_uf.sigla
+LEFT JOIN (SELECT DISTINCT id_municipio,nome FROM `basedosdados.br_bd_diretorios_brasil.municipio`) AS diretorio_id_municipio
+    ON dados.id_municipio = diretorio_id_municipio.id_municipio
+LEFT JOIN (SELECT DISTINCT id_municipio_tse,nome FROM `basedosdados.br_bd_diretorios_brasil.municipio`) AS diretorio_id_municipio_tse
+    ON dados.id_municipio_tse = diretorio_id_municipio_tse.id_municipio_tse
+LEFT JOIN (SELECT DISTINCT subclasse,descricao_subclasse,descricao_classe,descricao_grupo,descricao_divisao,descricao_secao FROM `basedosdados.br_bd_diretorios_brasil.cnae_2`) AS diretorio_cnae_2_doador_subclasse
+    ON dados.cnae_2_doador_subclasse = diretorio_cnae_2_doador_subclasse.subclasse
+LEFT JOIN (SELECT DISTINCT id_municipio,nome FROM `basedosdados.br_bd_diretorios_brasil.municipio`) AS diretorio_id_municipio_doador
+    ON dados.id_municipio_doador = diretorio_id_municipio_doador.id_municipio
+WHERE dados.ano = {ano}
+"""
+
 # ── Queries para descobrir anos disponíveis ────────────────────────────────
 
 QUERY_ANOS_CANDIDATOS = "SELECT DISTINCT ano FROM `basedosdados.br_tse_eleicoes.candidatos` ORDER BY ano"
 QUERY_ANOS_DOACOES = "SELECT DISTINCT ano FROM `basedosdados.br_tse_eleicoes.receitas_candidato` ORDER BY ano"
 QUERY_ANOS_DESPESAS = "SELECT DISTINCT ano FROM `basedosdados.br_tse_eleicoes.despesas_candidato` ORDER BY ano"
+QUERY_ANOS_RECEITAS_COMITE = "SELECT DISTINCT ano FROM `basedosdados.br_tse_eleicoes.receitas_comite` ORDER BY ano"
+QUERY_ANOS_RECEITAS_ORGAO = "SELECT DISTINCT ano FROM `basedosdados.br_tse_eleicoes.receitas_orgao_partidario` ORDER BY ano"
 
 # ── Colunas ─────────────────────────────────────────────────────────────────
 
@@ -348,6 +497,55 @@ COLUNAS_DESPESAS = [
     "id_municipio_tse_fornecedor", "sequencial_candidato_fornecedor",
     "numero_candidato_fornecedor", "numero_partido_fornecedor",
     "sigla_partido_fornecedor", "cargo_fornecedor",
+]
+
+COLUNAS_RECEITAS_COMITE = [
+    "ano", "sigla_uf", "sigla_uf_nome", "id_municipio", "id_municipio_nome",
+    "id_municipio_tse", "id_municipio_tse_nome", "tipo_eleicao",
+    "tipo_comite", "sequencial_comite", "numero_partido", "sigla_partido",
+    "data_receita", "origem_receita", "fonte_receita", "natureza_receita",
+    "situacao_receita", "descricao_receita", "tipo_documento",
+    "numero_documento", "nome_membro", "cpf_membro",
+    "cnpj_prestador_contas", "sigla_uf_doador", "nome_doador",
+    "nome_doador_rf", "cpf_cnpj_doador", "numero_partido_doador",
+    "numero_candidato_doador", "cnae_2_doador", "cnae_2_doador_classe",
+    "cnae_2_doador_subclasse",
+    "cnae_2_doador_subclasse_descricao_subclasse",
+    "cnae_2_doador_subclasse_descricao_classe",
+    "cnae_2_doador_subclasse_descricao_grupo",
+    "cnae_2_doador_subclasse_descricao_divisao",
+    "cnae_2_doador_subclasse_descricao_secao",
+    "descricao_cnae_2_doador", "cpf_cnpj_doador_orig",
+    "nome_doador_orig", "nome_doador_orig_rf", "tipo_doador_orig",
+    "descricao_cnae_2_doador_orig", "valor_receita",
+]
+
+COLUNAS_RECEITAS_ORGAO = [
+    "ano", "sigla_uf", "sigla_uf_nome", "id_municipio", "id_municipio_nome",
+    "id_municipio_tse", "id_municipio_tse_nome", "tipo_eleicao",
+    "esfera_partidaria", "tipo_diretorio", "sequencial_diretorio",
+    "numero_partido", "sigla_partido", "nome_partido",
+    "numero_recibo_eleitoral", "tipo_documento", "numero_documento",
+    "tipo_prestacao_contas", "data_prestacao_contas",
+    "sequencial_prestador_contas", "cnpj_prestador_contas",
+    "data_receita", "origem_receita", "fonte_receita", "natureza_receita",
+    "especie_receita", "descricao_receita", "sequencial_receita",
+    "cnae_2_doador", "cnae_2_doador_classe", "cnae_2_doador_subclasse",
+    "cnae_2_doador_subclasse_descricao_subclasse",
+    "cnae_2_doador_subclasse_descricao_classe",
+    "cnae_2_doador_subclasse_descricao_grupo",
+    "cnae_2_doador_subclasse_descricao_divisao",
+    "cnae_2_doador_subclasse_descricao_secao",
+    "descricao_cnae_2_doador", "cpf_cnpj_doador", "nome_doador",
+    "nome_doador_rf", "esfera_partidaria_doador", "sigla_uf_doador",
+    "id_municipio_doador", "id_municipio_doador_nome",
+    "id_municipio_tse_doador", "sequencial_candidato_doador",
+    "numero_candidato_doador", "cargo_candidato_doador",
+    "numero_partido_doador", "sigla_partido_doador", "nome_partido_doador",
+    "numero_recibo_doacao", "numero_documento_doacao",
+    "cpf_cnpj_doador_orig", "nome_doador_orig", "tipo_doador_orig",
+    "descricao_cnae_2_doador_orig", "nome_doador_orig_rf",
+    "valor_receita",
 ]
 
 # ── Tipos ────────────────────────────────────────────────────────────────────
@@ -508,6 +706,115 @@ TIPOS_DESPESAS = {
     "cargo_fornecedor": "VARCHAR(64)",
 }
 
+TIPOS_RECEITAS_COMITE = {
+    "ano": "INTEGER",
+    "sigla_uf": "VARCHAR(2)",
+    "sigla_uf_nome": "VARCHAR(64)",
+    "id_municipio": "VARCHAR(16)",
+    "id_municipio_nome": "VARCHAR(128)",
+    "id_municipio_tse": "VARCHAR(16)",
+    "id_municipio_tse_nome": "VARCHAR(128)",
+    "tipo_eleicao": "VARCHAR(64)",
+    "tipo_comite": "VARCHAR(64)",
+    "sequencial_comite": "VARCHAR(32)",
+    "numero_partido": "VARCHAR(8)",
+    "sigla_partido": "VARCHAR(20)",
+    "data_receita": "DATE",
+    "origem_receita": "VARCHAR(128)",
+    "fonte_receita": "VARCHAR(64)",
+    "natureza_receita": "VARCHAR(32)",
+    "situacao_receita": "VARCHAR(64)",
+    "descricao_receita": "VARCHAR(2000)",
+    "tipo_documento": "VARCHAR(64)",
+    "numero_documento": "VARCHAR(64)",
+    "nome_membro": "VARCHAR(255)",
+    "cpf_membro": "VARCHAR(14)",
+    "cnpj_prestador_contas": "VARCHAR(14)",
+    "sigla_uf_doador": "VARCHAR(2)",
+    "nome_doador": "VARCHAR(255)",
+    "nome_doador_rf": "VARCHAR(255)",
+    "cpf_cnpj_doador": "VARCHAR(14)",
+    "numero_partido_doador": "VARCHAR(8)",
+    "numero_candidato_doador": "VARCHAR(16)",
+    "cnae_2_doador": "VARCHAR(16)",
+    "cnae_2_doador_classe": "VARCHAR(16)",
+    "cnae_2_doador_subclasse": "VARCHAR(16)",
+    "cnae_2_doador_subclasse_descricao_subclasse": "VARCHAR(255)",
+    "cnae_2_doador_subclasse_descricao_classe": "VARCHAR(255)",
+    "cnae_2_doador_subclasse_descricao_grupo": "VARCHAR(255)",
+    "cnae_2_doador_subclasse_descricao_divisao": "VARCHAR(255)",
+    "cnae_2_doador_subclasse_descricao_secao": "VARCHAR(255)",
+    "descricao_cnae_2_doador": "VARCHAR(255)",
+    "cpf_cnpj_doador_orig": "VARCHAR(14)",
+    "nome_doador_orig": "VARCHAR(255)",
+    "nome_doador_orig_rf": "VARCHAR(255)",
+    "tipo_doador_orig": "VARCHAR(64)",
+    "descricao_cnae_2_doador_orig": "VARCHAR(255)",
+    "valor_receita": "NUMERIC(18,2)",
+}
+
+TIPOS_RECEITAS_ORGAO = {
+    "ano": "INTEGER",
+    "sigla_uf": "VARCHAR(2)",
+    "sigla_uf_nome": "VARCHAR(64)",
+    "id_municipio": "VARCHAR(16)",
+    "id_municipio_nome": "VARCHAR(128)",
+    "id_municipio_tse": "VARCHAR(16)",
+    "id_municipio_tse_nome": "VARCHAR(128)",
+    "tipo_eleicao": "VARCHAR(64)",
+    "esfera_partidaria": "VARCHAR(64)",
+    "tipo_diretorio": "VARCHAR(64)",
+    "sequencial_diretorio": "VARCHAR(32)",
+    "numero_partido": "VARCHAR(8)",
+    "sigla_partido": "VARCHAR(20)",
+    "nome_partido": "VARCHAR(128)",
+    "numero_recibo_eleitoral": "VARCHAR(64)",
+    "tipo_documento": "VARCHAR(64)",
+    "numero_documento": "VARCHAR(64)",
+    "tipo_prestacao_contas": "VARCHAR(32)",
+    "data_prestacao_contas": "DATE",
+    "sequencial_prestador_contas": "VARCHAR(32)",
+    "cnpj_prestador_contas": "VARCHAR(14)",
+    "data_receita": "DATE",
+    "origem_receita": "VARCHAR(128)",
+    "fonte_receita": "VARCHAR(64)",
+    "natureza_receita": "VARCHAR(32)",
+    "especie_receita": "VARCHAR(64)",
+    "descricao_receita": "VARCHAR(2000)",
+    "sequencial_receita": "VARCHAR(32)",
+    "cnae_2_doador": "VARCHAR(16)",
+    "cnae_2_doador_classe": "VARCHAR(16)",
+    "cnae_2_doador_subclasse": "VARCHAR(16)",
+    "cnae_2_doador_subclasse_descricao_subclasse": "VARCHAR(255)",
+    "cnae_2_doador_subclasse_descricao_classe": "VARCHAR(255)",
+    "cnae_2_doador_subclasse_descricao_grupo": "VARCHAR(255)",
+    "cnae_2_doador_subclasse_descricao_divisao": "VARCHAR(255)",
+    "cnae_2_doador_subclasse_descricao_secao": "VARCHAR(255)",
+    "descricao_cnae_2_doador": "VARCHAR(255)",
+    "cpf_cnpj_doador": "VARCHAR(14)",
+    "nome_doador": "VARCHAR(255)",
+    "nome_doador_rf": "VARCHAR(255)",
+    "esfera_partidaria_doador": "VARCHAR(64)",
+    "sigla_uf_doador": "VARCHAR(2)",
+    "id_municipio_doador": "VARCHAR(16)",
+    "id_municipio_doador_nome": "VARCHAR(128)",
+    "id_municipio_tse_doador": "VARCHAR(16)",
+    "sequencial_candidato_doador": "VARCHAR(32)",
+    "numero_candidato_doador": "VARCHAR(16)",
+    "cargo_candidato_doador": "VARCHAR(64)",
+    "numero_partido_doador": "VARCHAR(8)",
+    "sigla_partido_doador": "VARCHAR(20)",
+    "nome_partido_doador": "VARCHAR(128)",
+    "numero_recibo_doacao": "VARCHAR(64)",
+    "numero_documento_doacao": "VARCHAR(64)",
+    "cpf_cnpj_doador_orig": "VARCHAR(14)",
+    "nome_doador_orig": "VARCHAR(255)",
+    "tipo_doador_orig": "VARCHAR(64)",
+    "descricao_cnae_2_doador_orig": "VARCHAR(255)",
+    "nome_doador_orig_rf": "VARCHAR(255)",
+    "valor_receita": "NUMERIC(18,2)",
+}
+
 # ── Indices (criados ao final, apos todos os anos) ──────────────────────────
 
 INDICES_CANDIDATOS = [
@@ -567,6 +874,25 @@ INDICES_DESPESAS = [
     "CREATE INDEX idx_tse_despesas_candidato_cpf_cnpj_fornecedor ON tse_despesas_candidato (cpf_cnpj_fornecedor)",
 ]
 
+INDICES_RECEITAS_COMITE = [
+    "CREATE INDEX idx_tse_receitas_comite_ano ON tse_receitas_comite (ano)",
+    "CREATE INDEX idx_tse_receitas_comite_cpf_membro ON tse_receitas_comite (cpf_membro)",
+    "CREATE INDEX idx_tse_receitas_comite_cnpj_prestador_contas ON tse_receitas_comite (cnpj_prestador_contas)",
+    "CREATE INDEX idx_tse_receitas_comite_cpf_cnpj_doador ON tse_receitas_comite (cpf_cnpj_doador)",
+    "CREATE INDEX idx_tse_receitas_comite_cpf_cnpj_doador_orig ON tse_receitas_comite (cpf_cnpj_doador_orig)",
+    "CREATE INDEX idx_tse_receitas_comite_sequencial_comite ON tse_receitas_comite (sequencial_comite)",
+]
+
+INDICES_RECEITAS_ORGAO = [
+    "CREATE INDEX idx_tse_receitas_orgao_ano ON tse_receitas_orgao_partidario (ano)",
+    "CREATE INDEX idx_tse_receitas_orgao_cnpj_prestador_contas ON tse_receitas_orgao_partidario (cnpj_prestador_contas)",
+    "CREATE INDEX idx_tse_receitas_orgao_cpf_cnpj_doador ON tse_receitas_orgao_partidario (cpf_cnpj_doador)",
+    "CREATE INDEX idx_tse_receitas_orgao_cpf_cnpj_doador_orig ON tse_receitas_orgao_partidario (cpf_cnpj_doador_orig)",
+    "CREATE INDEX idx_tse_receitas_orgao_sequencial_receita ON tse_receitas_orgao_partidario (sequencial_receita)",
+    "CREATE INDEX idx_tse_receitas_orgao_sequencial_diretorio ON tse_receitas_orgao_partidario (sequencial_diretorio)",
+    "CREATE INDEX idx_tse_receitas_orgao_sequencial_prestador ON tse_receitas_orgao_partidario (sequencial_prestador_contas)",
+]
+
 # ── Configuracao por finalidade ──────────────────────────────────────────────
 
 CONFIGS = {
@@ -602,6 +928,28 @@ CONFIGS = {
         "tabela_staging": "tse_despesas_candidato_staging",
         "arquivo_csv_tpl": "despesas_candidato_{ano}.csv",
         "descricao": "despesas de campanha",
+    },
+    "receitas_comite": {
+        "query_tpl": QUERY_RECEITAS_COMITE_TPL,
+        "query_anos": QUERY_ANOS_RECEITAS_COMITE,
+        "colunas": COLUNAS_RECEITAS_COMITE,
+        "tipos": TIPOS_RECEITAS_COMITE,
+        "indices": INDICES_RECEITAS_COMITE,
+        "tabela_destino": "tse_receitas_comite",
+        "tabela_staging": "tse_receitas_comite_staging",
+        "arquivo_csv_tpl": "receitas_comite_{ano}.csv",
+        "descricao": "receitas de comitê",
+    },
+    "receitas_orgao": {
+        "query_tpl": QUERY_RECEITAS_ORGAO_TPL,
+        "query_anos": QUERY_ANOS_RECEITAS_ORGAO,
+        "colunas": COLUNAS_RECEITAS_ORGAO,
+        "tipos": TIPOS_RECEITAS_ORGAO,
+        "indices": INDICES_RECEITAS_ORGAO,
+        "tabela_destino": "tse_receitas_orgao_partidario",
+        "tabela_staging": "tse_receitas_orgao_partidario_staging",
+        "arquivo_csv_tpl": "receitas_orgao_partidario_{ano}.csv",
+        "descricao": "receitas de órgão partidário",
     },
 }
 
@@ -931,7 +1279,7 @@ def main():
         "--tabelas",
         type=str,
         default=None,
-        help="Tabelas específicas separadas por vírgula (candidatos,doacoes,despesas). Padrão: todas.",
+        help="Tabelas específicas separadas por vírgula (candidatos,doacoes,despesas,receitas_comite,receitas_orgao). Padrão: todas.",
     )
     parser.add_argument(
         "--drop-tabelas",
